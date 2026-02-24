@@ -1,6 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 html,
 body {
@@ -8,7 +6,11 @@ body {
 }
 
 body {
-  @apply bg-slate-950 text-slate-50 antialiased;
+  margin: 0;
+  background-color: #020617; /* slate-950 */
+  color: #f9fafb; /* slate-50 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #__next {
