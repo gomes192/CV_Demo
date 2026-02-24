@@ -20,9 +20,16 @@ function PeopleCounter() {
     _s();
     const videoRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
     const canvasRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
+    const historyRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])([]);
+    const lastEstimateUpdateRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(0);
+    const maxEstimatedCountRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(0);
+    const lastMaxIncreaseRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(0);
+    const SWEEP_RESET_MS = 45_000;
     const [status, setStatus] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])("idle");
     const [error, setError] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
     const [peopleCount, setPeopleCount] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(0);
+    const [estimatedCount, setEstimatedCount] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(0);
+    const [maxEstimatedCount, setMaxEstimatedCount] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(0);
     const [faceMode, setFaceMode] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])("environment");
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
         "PeopleCounter.useEffect": ()=>{
@@ -73,11 +80,49 @@ function PeopleCounter() {
                             }
                             try {
                                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                                const predictions = await model.detect(canvas, undefined, 0.5);
+                                const predictions = await model.detect(canvas, 40, 0.35);
                                 const persons = predictions.filter({
-                                    "PeopleCounter.useEffect.setupCamera.detectFrame.persons": (p)=>p.class === "person" && p.score !== undefined && p.score > 0.6
+                                    "PeopleCounter.useEffect.setupCamera.detectFrame.persons": (p)=>p.class === "person" && p.score !== undefined && p.score >= 0.4
                                 }["PeopleCounter.useEffect.setupCamera.detectFrame.persons"]);
-                                setPeopleCount(persons.length);
+                                const currentCount = persons.length;
+                                setPeopleCount(currentCount);
+                                const now = performance.now();
+                                const windowMs = 10_000;
+                                const history = historyRef.current;
+                                history.push({
+                                    count: currentCount,
+                                    t: now
+                                });
+                                while(history.length && now - history[0].t > windowMs){
+                                    history.shift();
+                                }
+                                if (now - lastEstimateUpdateRef.current > 400) {
+                                    lastEstimateUpdateRef.current = now;
+                                    let median;
+                                    if (history.length) {
+                                        const counts = history.map({
+                                            "PeopleCounter.useEffect.setupCamera.detectFrame.counts": (h)=>h.count
+                                        }["PeopleCounter.useEffect.setupCamera.detectFrame.counts"]).sort({
+                                            "PeopleCounter.useEffect.setupCamera.detectFrame.counts": (a, b)=>a - b
+                                        }["PeopleCounter.useEffect.setupCamera.detectFrame.counts"]);
+                                        const mid = Math.floor(counts.length / 2);
+                                        median = counts.length % 2 === 0 ? Math.round((counts[mid - 1] + counts[mid]) / 2) : counts[mid];
+                                    } else {
+                                        median = currentCount;
+                                    }
+                                    setEstimatedCount(median);
+                                    const maxRef = maxEstimatedCountRef.current;
+                                    const lastMax = lastMaxIncreaseRef.current;
+                                    if (median > maxRef) {
+                                        maxEstimatedCountRef.current = median;
+                                        lastMaxIncreaseRef.current = now;
+                                        setMaxEstimatedCount(median);
+                                    } else if (now - lastMax > SWEEP_RESET_MS) {
+                                        maxEstimatedCountRef.current = median;
+                                        lastMaxIncreaseRef.current = now;
+                                        setMaxEstimatedCount(median);
+                                    }
+                                }
                                 ctx.lineWidth = 2;
                                 ctx.font = "14px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
                                 persons.forEach({
@@ -87,7 +132,7 @@ function PeopleCounter() {
                                         ctx.fillStyle = "rgba(34, 197, 94, 0.15)";
                                         ctx.fillRect(x, y, width, height);
                                         ctx.strokeRect(x, y, width, height);
-                                        const label = `${(person.score ?? 0 * 100).toFixed(0)}% person`;
+                                        const label = `${(person.score ?? 0 * 100).toFixed(0)}% pessoa`;
                                         const labelX = x;
                                         const labelY = y > 20 ? y - 6 : y + 18;
                                         ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
@@ -106,7 +151,7 @@ function PeopleCounter() {
                 } catch (err) {
                     console.error(err);
                     setStatus("error");
-                    setError(err instanceof Error ? err.message : "Failed to start camera or detection.");
+                    setError(err instanceof Error ? err.message : "Falha ao iniciar câmera ou detecção.");
                 }
             }
             setupCamera();
@@ -128,431 +173,199 @@ function PeopleCounter() {
     }["PeopleCounter.useEffect"], [
         faceMode
     ]);
-    const statusLabel = status === "idle" ? "Idle" : status === "loading" ? "Loading model & camera…" : status === "running" ? "Counting people in real time" : "Error";
+    const statusLabel = status === "idle" ? "Inativo" : status === "loading" ? "Carregando…" : status === "running" ? "Ao vivo" : "Erro";
+    const peopleLabel = estimatedCount === 1 ? "pessoa" : "pessoas";
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-        className: "flex h-full flex-col gap-6 lg:flex-row",
+        className: "flex h-full min-h-0 flex-1 flex-row gap-0",
         children: [
-            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
-                className: "flex flex-1 flex-col justify-between rounded-3xl bg-slate-900/60 p-6 ring-1 ring-slate-800/80 backdrop-blur",
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "relative min-w-0 flex-1 overflow-hidden bg-slate-900",
                 children: [
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("header", {
-                        className: "flex items-center justify-between gap-4",
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("video", {
+                        ref: videoRef,
+                        className: "pointer-events-none absolute inset-0 h-full w-full object-cover opacity-0",
+                        playsInline: true,
+                        muted: true
+                    }, void 0, false, {
+                        fileName: "[project]/components/PeopleCounter.tsx",
+                        lineNumber: 188,
+                        columnNumber: 9
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("canvas", {
+                        ref: canvasRef,
+                        className: "h-full w-full bg-slate-900 object-cover"
+                    }, void 0, false, {
+                        fileName: "[project]/components/PeopleCounter.tsx",
+                        lineNumber: 194,
+                        columnNumber: 9
+                    }, this)
+                ]
+            }, void 0, true, {
+                fileName: "[project]/components/PeopleCounter.tsx",
+                lineNumber: 187,
+                columnNumber: 7
+            }, this),
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("aside", {
+                className: "flex w-28 flex-shrink-0 flex-col justify-between border-l border-slate-800/80 bg-slate-950/90 p-3 backdrop-blur sm:w-36 md:w-44 md:p-4",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "flex flex-col gap-3",
                         children: [
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "flex items-center justify-between gap-2",
                                 children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
-                                        className: "text-lg font-semibold text-slate-50 sm:text-xl",
-                                        children: "Room People Counter"
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                        className: `h-2 w-2 flex-shrink-0 rounded-full ${status === "running" ? "bg-emerald-400" : status === "loading" ? "bg-amber-400 animate-pulse" : status === "error" ? "bg-rose-400" : "bg-slate-500"}`,
+                                        title: statusLabel
                                     }, void 0, false, {
                                         fileName: "[project]/components/PeopleCounter.tsx",
-                                        lineNumber: 143,
+                                        lineNumber: 204,
+                                        columnNumber: 13
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                        className: "truncate text-[0.65rem] font-medium uppercase tracking-wider text-slate-500",
+                                        children: statusLabel
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/PeopleCounter.tsx",
+                                        lineNumber: 216,
+                                        columnNumber: 13
+                                    }, this)
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/components/PeopleCounter.tsx",
+                                lineNumber: 203,
+                                columnNumber: 11
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                        className: "text-[0.6rem] font-medium uppercase tracking-widest text-slate-500 md:text-[0.65rem]",
+                                        children: "Estimativa"
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/PeopleCounter.tsx",
+                                        lineNumber: 222,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                        className: "mt-1 text-sm text-slate-400",
-                                        children: "Uses on-device computer vision to estimate how many people are in front of your camera."
+                                        className: "mt-0.5 text-3xl font-semibold tabular-nums text-emerald-400 sm:text-4xl md:text-5xl",
+                                        children: estimatedCount
                                     }, void 0, false, {
-                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                        lineNumber: 146,
-                                        columnNumber: 13
-                                    }, this)
-                                ]
-                            }, void 0, true, {
-                                fileName: "[project]/components/PeopleCounter.tsx",
-                                lineNumber: 142,
-                                columnNumber: 11
-                            }, this),
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                className: "flex items-center gap-3",
-                                children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                        className: `inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${status === "running" ? "bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/40" : status === "loading" ? "bg-amber-500/10 text-amber-300 ring-1 ring-amber-500/40" : status === "error" ? "bg-rose-500/10 text-rose-300 ring-1 ring-rose-500/40" : "bg-slate-700/60 text-slate-300 ring-1 ring-slate-600/70"}`,
-                                        children: [
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                                className: `h-1.5 w-1.5 rounded-full ${status === "running" ? "bg-emerald-400" : status === "loading" ? "bg-amber-400" : status === "error" ? "bg-rose-400" : "bg-slate-400"}`
-                                            }, void 0, false, {
-                                                fileName: "[project]/components/PeopleCounter.tsx",
-                                                lineNumber: 163,
-                                                columnNumber: 15
-                                            }, this),
-                                            statusLabel
-                                        ]
-                                    }, void 0, true, {
-                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                        lineNumber: 152,
-                                        columnNumber: 13
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
-                                        type: "button",
-                                        onClick: ()=>setFaceMode((prev)=>prev === "environment" ? "user" : "environment"),
-                                        className: "inline-flex items-center gap-1.5 rounded-full bg-slate-800/80 px-3 py-1 text-xs font-medium text-slate-200 ring-1 ring-slate-700 transition hover:bg-slate-700/80 hover:ring-slate-500/80",
-                                        children: [
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                                className: "h-1.5 w-1.5 rounded-full bg-cyan-400"
-                                            }, void 0, false, {
-                                                fileName: "[project]/components/PeopleCounter.tsx",
-                                                lineNumber: 185,
-                                                columnNumber: 15
-                                            }, this),
-                                            faceMode === "environment" ? "Rear camera" : "Front camera"
-                                        ]
-                                    }, void 0, true, {
-                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                        lineNumber: 176,
-                                        columnNumber: 13
-                                    }, this)
-                                ]
-                            }, void 0, true, {
-                                fileName: "[project]/components/PeopleCounter.tsx",
-                                lineNumber: 151,
-                                columnNumber: 11
-                            }, this)
-                        ]
-                    }, void 0, true, {
-                        fileName: "[project]/components/PeopleCounter.tsx",
-                        lineNumber: 141,
-                        columnNumber: 9
-                    }, this),
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                        className: "mt-4 flex flex-1 flex-col gap-4 lg:flex-row",
-                        children: [
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                className: "relative flex-1 overflow-hidden rounded-2xl bg-slate-900/80",
-                                children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("video", {
-                                        ref: videoRef,
-                                        className: "pointer-events-none absolute inset-0 h-full w-full object-cover opacity-0",
-                                        playsInline: true,
-                                        muted: true
-                                    }, void 0, false, {
-                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                        lineNumber: 193,
-                                        columnNumber: 13
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("canvas", {
-                                        ref: canvasRef,
-                                        className: "h-[280px] w-full bg-slate-900 object-cover sm:h-[360px] lg:h-full"
-                                    }, void 0, false, {
-                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                        lineNumber: 199,
-                                        columnNumber: 13
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                        className: "pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-slate-950/20"
-                                    }, void 0, false, {
-                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                        lineNumber: 203,
-                                        columnNumber: 13
-                                    }, this)
-                                ]
-                            }, void 0, true, {
-                                fileName: "[project]/components/PeopleCounter.tsx",
-                                lineNumber: 192,
-                                columnNumber: 11
-                            }, this),
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("aside", {
-                                className: "flex w-full flex-col justify-between gap-4 rounded-2xl bg-slate-950/60 p-4 ring-1 ring-slate-800/80 lg:w-72",
-                                children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                        children: [
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                                className: "text-xs font-medium uppercase tracking-[0.2em] text-slate-400",
-                                                children: "Live Count"
-                                            }, void 0, false, {
-                                                fileName: "[project]/components/PeopleCounter.tsx",
-                                                lineNumber: 208,
-                                                columnNumber: 15
-                                            }, this),
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                                className: "mt-2 flex items-end gap-2",
-                                                children: [
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                                        className: "text-6xl font-semibold tabular-nums text-emerald-400 sm:text-7xl",
-                                                        children: peopleCount
-                                                    }, void 0, false, {
-                                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                                        lineNumber: 212,
-                                                        columnNumber: 17
-                                                    }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                                        className: "mb-2 text-sm text-slate-400",
-                                                        children: peopleCount === 1 ? "person" : "people"
-                                                    }, void 0, false, {
-                                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                                        lineNumber: 215,
-                                                        columnNumber: 17
-                                                    }, this)
-                                                ]
-                                            }, void 0, true, {
-                                                fileName: "[project]/components/PeopleCounter.tsx",
-                                                lineNumber: 211,
-                                                columnNumber: 15
-                                            }, this),
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                                className: "mt-3 text-xs text-slate-400",
-                                                children: "This is an estimate based on visible people in the camera frame. Good lighting and clear visibility improve accuracy."
-                                            }, void 0, false, {
-                                                fileName: "[project]/components/PeopleCounter.tsx",
-                                                lineNumber: 219,
-                                                columnNumber: 15
-                                            }, this)
-                                        ]
-                                    }, void 0, true, {
-                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                        lineNumber: 207,
-                                        columnNumber: 13
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                        className: "space-y-2 text-xs text-slate-400",
-                                        children: [
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                                className: "font-medium text-slate-300",
-                                                children: "Tips for best results"
-                                            }, void 0, false, {
-                                                fileName: "[project]/components/PeopleCounter.tsx",
-                                                lineNumber: 226,
-                                                columnNumber: 15
-                                            }, this),
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("ul", {
-                                                className: "space-y-1.5",
-                                                children: [
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                                        children: "• Point the camera so most people are fully visible."
-                                                    }, void 0, false, {
-                                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                                        lineNumber: 228,
-                                                        columnNumber: 17
-                                                    }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                                        children: "• Avoid strong backlight or very dark scenes."
-                                                    }, void 0, false, {
-                                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                                        lineNumber: 229,
-                                                        columnNumber: 17
-                                                    }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                                        children: "• Works entirely in your browser, no video is uploaded."
-                                                    }, void 0, false, {
-                                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                                        lineNumber: 230,
-                                                        columnNumber: 17
-                                                    }, this)
-                                                ]
-                                            }, void 0, true, {
-                                                fileName: "[project]/components/PeopleCounter.tsx",
-                                                lineNumber: 227,
-                                                columnNumber: 15
-                                            }, this)
-                                        ]
-                                    }, void 0, true, {
                                         fileName: "[project]/components/PeopleCounter.tsx",
                                         lineNumber: 225,
                                         columnNumber: 13
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                        className: "text-[0.65rem] text-slate-400",
+                                        children: peopleLabel
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/PeopleCounter.tsx",
+                                        lineNumber: 228,
+                                        columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/PeopleCounter.tsx",
-                                lineNumber: 206,
+                                lineNumber: 221,
+                                columnNumber: 11
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "border-t border-slate-800/80 pt-2",
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                        className: "text-[0.55rem] uppercase tracking-wider text-slate-500 md:text-[0.6rem]",
+                                        children: "Máx. varredura"
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/PeopleCounter.tsx",
+                                        lineNumber: 232,
+                                        columnNumber: 13
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                        className: "mt-0.5 text-xl font-medium tabular-nums text-slate-300 md:text-2xl",
+                                        children: maxEstimatedCount
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/PeopleCounter.tsx",
+                                        lineNumber: 235,
+                                        columnNumber: 13
+                                    }, this)
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/components/PeopleCounter.tsx",
+                                lineNumber: 231,
+                                columnNumber: 11
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "border-t border-slate-800/80 pt-2",
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                        className: "text-[0.55rem] uppercase tracking-wider text-slate-500 md:text-[0.6rem]",
+                                        children: "Frame atual"
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/PeopleCounter.tsx",
+                                        lineNumber: 241,
+                                        columnNumber: 13
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                        className: "mt-0.5 text-lg font-medium tabular-nums text-slate-400 md:text-xl",
+                                        children: peopleCount
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/PeopleCounter.tsx",
+                                        lineNumber: 244,
+                                        columnNumber: 13
+                                    }, this)
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/components/PeopleCounter.tsx",
+                                lineNumber: 240,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/PeopleCounter.tsx",
-                        lineNumber: 191,
+                        lineNumber: 202,
                         columnNumber: 9
                     }, this),
-                    status === "error" && error && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                        className: "mt-3 text-xs text-rose-300",
-                        children: [
-                            "Camera or model error: ",
-                            error,
-                            ". Check that you granted camera access and are using a secure (https) connection."
-                        ]
-                    }, void 0, true, {
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "mt-auto pt-3",
+                        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                            type: "button",
+                            onClick: ()=>setFaceMode((prev)=>prev === "environment" ? "user" : "environment"),
+                            className: "w-full rounded-lg bg-slate-800/80 py-1.5 text-[0.65rem] font-medium text-slate-300 ring-1 ring-slate-700 transition hover:bg-slate-700/80 md:text-[0.7rem]",
+                            children: faceMode === "environment" ? "Traseira" : "Frontal"
+                        }, void 0, false, {
+                            fileName: "[project]/components/PeopleCounter.tsx",
+                            lineNumber: 251,
+                            columnNumber: 11
+                        }, this)
+                    }, void 0, false, {
                         fileName: "[project]/components/PeopleCounter.tsx",
-                        lineNumber: 237,
-                        columnNumber: 11
+                        lineNumber: 250,
+                        columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/PeopleCounter.tsx",
-                lineNumber: 140,
+                lineNumber: 201,
                 columnNumber: 7
             }, this),
-            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
-                className: "flex w-full flex-col justify-between gap-4 rounded-3xl bg-slate-900/40 p-6 ring-1 ring-slate-800/80 backdrop-blur lg:w-80",
+            status === "error" && error && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                className: "fixed bottom-4 left-4 right-28 max-w-md rounded-lg bg-rose-950/90 px-3 py-2 text-xs text-rose-200 ring-1 ring-rose-800 sm:right-36 md:right-44",
                 children: [
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                        children: [
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
-                                className: "text-sm font-semibold text-slate-100",
-                                children: "About this demo"
-                            }, void 0, false, {
-                                fileName: "[project]/components/PeopleCounter.tsx",
-                                lineNumber: 246,
-                                columnNumber: 11
-                            }, this),
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                className: "mt-2 text-sm text-slate-400",
-                                children: [
-                                    "This project runs a lightweight TensorFlow.js model (",
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("code", {
-                                        className: "rounded bg-slate-800/80 px-1.5 py-0.5 text-[0.7rem] text-emerald-300",
-                                        children: "coco-ssd"
-                                    }, void 0, false, {
-                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                        lineNumber: 251,
-                                        columnNumber: 14
-                                    }, this),
-                                    ") directly in your browser to detect people in the frame, then visualizes them with bounding boxes."
-                                ]
-                            }, void 0, true, {
-                                fileName: "[project]/components/PeopleCounter.tsx",
-                                lineNumber: 249,
-                                columnNumber: 11
-                            }, this)
-                        ]
-                    }, void 0, true, {
-                        fileName: "[project]/components/PeopleCounter.tsx",
-                        lineNumber: 245,
-                        columnNumber: 9
-                    }, this),
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                        className: "space-y-3 text-sm text-slate-400",
-                        children: [
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                        className: "text-xs font-medium uppercase tracking-[0.18em] text-slate-500",
-                                        children: "Designed for"
-                                    }, void 0, false, {
-                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                        lineNumber: 261,
-                                        columnNumber: 13
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                        className: "mt-1 text-sm text-slate-300",
-                                        children: "Desktop & mobile browsers (Chrome, Edge, Safari) with camera access."
-                                    }, void 0, false, {
-                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                        lineNumber: 264,
-                                        columnNumber: 13
-                                    }, this)
-                                ]
-                            }, void 0, true, {
-                                fileName: "[project]/components/PeopleCounter.tsx",
-                                lineNumber: 260,
-                                columnNumber: 11
-                            }, this),
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                        className: "text-xs font-medium uppercase tracking-[0.18em] text-slate-500",
-                                        children: "Privacy"
-                                    }, void 0, false, {
-                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                        lineNumber: 270,
-                                        columnNumber: 13
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                        className: "mt-1 text-sm text-slate-300",
-                                        children: "All computation happens on-device. Video never leaves your browser."
-                                    }, void 0, false, {
-                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                        lineNumber: 273,
-                                        columnNumber: 13
-                                    }, this)
-                                ]
-                            }, void 0, true, {
-                                fileName: "[project]/components/PeopleCounter.tsx",
-                                lineNumber: 269,
-                                columnNumber: 11
-                            }, this)
-                        ]
-                    }, void 0, true, {
-                        fileName: "[project]/components/PeopleCounter.tsx",
-                        lineNumber: 259,
-                        columnNumber: 9
-                    }, this),
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                        className: "rounded-2xl border border-dashed border-slate-700/80 bg-slate-950/40 p-3 text-xs text-slate-400",
-                        children: [
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                className: "font-medium text-slate-300",
-                                children: "Deploying to Vercel"
-                            }, void 0, false, {
-                                fileName: "[project]/components/PeopleCounter.tsx",
-                                lineNumber: 281,
-                                columnNumber: 11
-                            }, this),
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("ol", {
-                                className: "mt-1 list-decimal space-y-0.5 pl-4",
-                                children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                        children: "Push this folder to a Git repo."
-                                    }, void 0, false, {
-                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                        lineNumber: 285,
-                                        columnNumber: 13
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                        children: "Import into Vercel as a Next.js app."
-                                    }, void 0, false, {
-                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                        lineNumber: 286,
-                                        columnNumber: 13
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                        children: [
-                                            "Set build command to ",
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("code", {
-                                                children: "npm run build"
-                                            }, void 0, false, {
-                                                fileName: "[project]/components/PeopleCounter.tsx",
-                                                lineNumber: 287,
-                                                columnNumber: 38
-                                            }, this),
-                                            " and output to ",
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("code", {
-                                                children: ".next"
-                                            }, void 0, false, {
-                                                fileName: "[project]/components/PeopleCounter.tsx",
-                                                lineNumber: 287,
-                                                columnNumber: 79
-                                            }, this),
-                                            " (defaults)."
-                                        ]
-                                    }, void 0, true, {
-                                        fileName: "[project]/components/PeopleCounter.tsx",
-                                        lineNumber: 287,
-                                        columnNumber: 13
-                                    }, this)
-                                ]
-                            }, void 0, true, {
-                                fileName: "[project]/components/PeopleCounter.tsx",
-                                lineNumber: 284,
-                                columnNumber: 11
-                            }, this)
-                        ]
-                    }, void 0, true, {
-                        fileName: "[project]/components/PeopleCounter.tsx",
-                        lineNumber: 280,
-                        columnNumber: 9
-                    }, this)
+                    error,
+                    ". Permita o acesso à câmera e use uma conexão segura (https)."
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/PeopleCounter.tsx",
-                lineNumber: 244,
-                columnNumber: 7
+                lineNumber: 266,
+                columnNumber: 9
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/PeopleCounter.tsx",
-        lineNumber: 139,
+        lineNumber: 185,
         columnNumber: 5
     }, this);
 }
-_s(PeopleCounter, "FTw1IMHyoOHvduDnDUUBfLv5m3E=");
+_s(PeopleCounter, "GmHxOgQHf63o4XsPhS3s+hZOZDE=");
 _c = PeopleCounter;
 var _c;
 __turbopack_context__.k.register(_c, "PeopleCounter");

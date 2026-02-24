@@ -9,9 +9,16 @@ type DetectionStatus = "idle" | "loading" | "running" | "error";
 export function PeopleCounter() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const historyRef = useRef<{ count: number; t: number }[]>([]);
+  const lastEstimateUpdateRef = useRef<number>(0);
+  const maxEstimatedCountRef = useRef<number>(0);
+  const lastMaxIncreaseRef = useRef<number>(0);
+  const SWEEP_RESET_MS = 45_000;
   const [status, setStatus] = useState<DetectionStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [peopleCount, setPeopleCount] = useState<number>(0);
+  const [estimatedCount, setEstimatedCount] = useState<number>(0);
+  const [maxEstimatedCount, setMaxEstimatedCount] = useState<number>(0);
   const [faceMode, setFaceMode] = useState<"user" | "environment">(
     "environment",
   );
@@ -65,11 +72,48 @@ export function PeopleCounter() {
           try {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            const predictions = await model.detect(canvas, undefined, 0.5);
+            const predictions = await model.detect(canvas, 40, 0.35);
             const persons = predictions.filter(
-              (p) => p.class === "person" && p.score !== undefined && p.score > 0.6,
+              (p) => p.class === "person" && p.score !== undefined && p.score >= 0.4,
             );
-            setPeopleCount(persons.length);
+            const currentCount = persons.length;
+            setPeopleCount(currentCount);
+
+            const now = performance.now();
+            const windowMs = 10_000;
+            const history = historyRef.current;
+            history.push({ count: currentCount, t: now });
+            while (history.length && now - history[0].t > windowMs) {
+              history.shift();
+            }
+
+            if (now - lastEstimateUpdateRef.current > 400) {
+              lastEstimateUpdateRef.current = now;
+              let median: number;
+              if (history.length) {
+                const counts = history.map((h) => h.count).sort((a, b) => a - b);
+                const mid = Math.floor(counts.length / 2);
+                median =
+                  counts.length % 2 === 0
+                    ? Math.round((counts[mid - 1] + counts[mid]) / 2)
+                    : counts[mid];
+              } else {
+                median = currentCount;
+              }
+              setEstimatedCount(median);
+
+              const maxRef = maxEstimatedCountRef.current;
+              const lastMax = lastMaxIncreaseRef.current;
+              if (median > maxRef) {
+                maxEstimatedCountRef.current = median;
+                lastMaxIncreaseRef.current = now;
+                setMaxEstimatedCount(median);
+              } else if (now - lastMax > SWEEP_RESET_MS) {
+                maxEstimatedCountRef.current = median;
+                lastMaxIncreaseRef.current = now;
+                setMaxEstimatedCount(median);
+              }
+            }
 
             ctx.lineWidth = 2;
             ctx.font = "14px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
@@ -81,7 +125,7 @@ export function PeopleCounter() {
               ctx.fillRect(x, y, width, height);
               ctx.strokeRect(x, y, width, height);
 
-              const label = `${(person.score ?? 0 * 100).toFixed(0)}% person`;
+              const label = `${(person.score ?? 0 * 100).toFixed(0)}% pessoa`;
               const labelX = x;
               const labelY = y > 20 ? y - 6 : y + 18;
 
@@ -105,7 +149,7 @@ export function PeopleCounter() {
         setError(
           err instanceof Error
             ? err.message
-            : "Failed to start camera or detection.",
+            : "Falha ao iniciar câmera ou detecção.",
         );
       }
     }
@@ -128,167 +172,101 @@ export function PeopleCounter() {
 
   const statusLabel =
     status === "idle"
-      ? "Idle"
+      ? "Inativo"
       : status === "loading"
-        ? "Loading model & camera…"
+        ? "Carregando…"
         : status === "running"
-          ? "Counting people in real time"
-          : "Error";
+          ? "Ao vivo"
+          : "Erro";
+
+  const peopleLabel = estimatedCount === 1 ? "pessoa" : "pessoas";
 
   return (
-    <div className="flex h-full flex-col gap-6 lg:flex-row">
-      <section className="flex flex-1 flex-col justify-between rounded-3xl bg-slate-900/60 p-6 ring-1 ring-slate-800/80 backdrop-blur">
-        <header className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-lg font-semibold text-slate-50 sm:text-xl">
-              Room People Counter
-            </h1>
-            <p className="mt-1 text-sm text-slate-400">
-              Uses on-device computer vision to estimate how many people are in
-              front of your camera.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
+    <div className="flex h-full min-h-0 flex-1 flex-row gap-0">
+      {/* Câmera ocupa a maior parte da tela */}
+      <div className="relative min-w-0 flex-1 overflow-hidden bg-slate-900">
+        <video
+          ref={videoRef}
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-0"
+          playsInline
+          muted
+        />
+        <canvas
+          ref={canvasRef}
+          className="h-full w-full bg-slate-900 object-cover"
+        />
+      </div>
+
+      {/* Painel do contador ao lado */}
+      <aside className="flex w-28 flex-shrink-0 flex-col justify-between border-l border-slate-800/80 bg-slate-950/90 p-3 backdrop-blur sm:w-36 md:w-44 md:p-4">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2">
             <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
+              className={`h-2 w-2 flex-shrink-0 rounded-full ${
                 status === "running"
-                  ? "bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/40"
+                  ? "bg-emerald-400"
                   : status === "loading"
-                    ? "bg-amber-500/10 text-amber-300 ring-1 ring-amber-500/40"
+                    ? "bg-amber-400 animate-pulse"
                     : status === "error"
-                      ? "bg-rose-500/10 text-rose-300 ring-1 ring-rose-500/40"
-                      : "bg-slate-700/60 text-slate-300 ring-1 ring-slate-600/70"
+                      ? "bg-rose-400"
+                      : "bg-slate-500"
               }`}
-            >
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  status === "running"
-                    ? "bg-emerald-400"
-                    : status === "loading"
-                      ? "bg-amber-400"
-                      : status === "error"
-                        ? "bg-rose-400"
-                        : "bg-slate-400"
-                }`}
-              />
+              title={statusLabel}
+            />
+            <span className="truncate text-[0.65rem] font-medium uppercase tracking-wider text-slate-500">
               {statusLabel}
             </span>
-            <button
-              type="button"
-              onClick={() =>
-                setFaceMode((prev) =>
-                  prev === "environment" ? "user" : "environment",
-                )
-              }
-              className="inline-flex items-center gap-1.5 rounded-full bg-slate-800/80 px-3 py-1 text-xs font-medium text-slate-200 ring-1 ring-slate-700 transition hover:bg-slate-700/80 hover:ring-slate-500/80"
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
-              {faceMode === "environment" ? "Rear camera" : "Front camera"}
-            </button>
-          </div>
-        </header>
-
-        <div className="mt-4 flex flex-1 flex-col gap-4 lg:flex-row">
-          <div className="relative flex-1 overflow-hidden rounded-2xl bg-slate-900/80">
-            <video
-              ref={videoRef}
-              className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-0"
-              playsInline
-              muted
-            />
-            <canvas
-              ref={canvasRef}
-              className="h-[280px] w-full bg-slate-900 object-cover sm:h-[360px] lg:h-full"
-            />
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-slate-950/20" />
           </div>
 
-          <aside className="flex w-full flex-col justify-between gap-4 rounded-2xl bg-slate-950/60 p-4 ring-1 ring-slate-800/80 lg:w-72">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">
-                Live Count
-              </p>
-              <div className="mt-2 flex items-end gap-2">
-                <span className="text-6xl font-semibold tabular-nums text-emerald-400 sm:text-7xl">
-                  {peopleCount}
-                </span>
-                <span className="mb-2 text-sm text-slate-400">
-                  {peopleCount === 1 ? "person" : "people"}
-                </span>
-              </div>
-              <p className="mt-3 text-xs text-slate-400">
-                This is an estimate based on visible people in the camera
-                frame. Good lighting and clear visibility improve accuracy.
-              </p>
-            </div>
-
-            <div className="space-y-2 text-xs text-slate-400">
-              <p className="font-medium text-slate-300">Tips for best results</p>
-              <ul className="space-y-1.5">
-                <li>• Point the camera so most people are fully visible.</li>
-                <li>• Avoid strong backlight or very dark scenes.</li>
-                <li>• Works entirely in your browser, no video is uploaded.</li>
-              </ul>
-            </div>
-          </aside>
-        </div>
-
-        {status === "error" && error && (
-          <p className="mt-3 text-xs text-rose-300">
-            Camera or model error: {error}. Check that you granted camera
-            access and are using a secure (https) connection.
-          </p>
-        )}
-      </section>
-
-      <section className="flex w-full flex-col justify-between gap-4 rounded-3xl bg-slate-900/40 p-6 ring-1 ring-slate-800/80 backdrop-blur lg:w-80">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-100">
-            About this demo
-          </h2>
-          <p className="mt-2 text-sm text-slate-400">
-            This project runs a lightweight TensorFlow.js model
-            (<code className="rounded bg-slate-800/80 px-1.5 py-0.5 text-[0.7rem] text-emerald-300">
-              coco-ssd
-            </code>
-            ) directly in your browser to detect people in the frame, then
-            visualizes them with bounding boxes.
-          </p>
-        </div>
-
-        <div className="space-y-3 text-sm text-slate-400">
           <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
-              Designed for
+            <p className="text-[0.6rem] font-medium uppercase tracking-widest text-slate-500 md:text-[0.65rem]">
+              Estimativa
             </p>
-            <p className="mt-1 text-sm text-slate-300">
-              Desktop & mobile browsers (Chrome, Edge, Safari) with camera
-              access.
+            <p className="mt-0.5 text-3xl font-semibold tabular-nums text-emerald-400 sm:text-4xl md:text-5xl">
+              {estimatedCount}
+            </p>
+            <p className="text-[0.65rem] text-slate-400">{peopleLabel}</p>
+          </div>
+
+          <div className="border-t border-slate-800/80 pt-2">
+            <p className="text-[0.55rem] uppercase tracking-wider text-slate-500 md:text-[0.6rem]">
+              Máx. varredura
+            </p>
+            <p className="mt-0.5 text-xl font-medium tabular-nums text-slate-300 md:text-2xl">
+              {maxEstimatedCount}
             </p>
           </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
-              Privacy
+
+          <div className="border-t border-slate-800/80 pt-2">
+            <p className="text-[0.55rem] uppercase tracking-wider text-slate-500 md:text-[0.6rem]">
+              Frame atual
             </p>
-            <p className="mt-1 text-sm text-slate-300">
-              All computation happens on-device. Video never leaves your
-              browser.
+            <p className="mt-0.5 text-lg font-medium tabular-nums text-slate-400 md:text-xl">
+              {peopleCount}
             </p>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-dashed border-slate-700/80 bg-slate-950/40 p-3 text-xs text-slate-400">
-          <p className="font-medium text-slate-300">
-            Deploying to Vercel
-          </p>
-          <ol className="mt-1 list-decimal space-y-0.5 pl-4">
-            <li>Push this folder to a Git repo.</li>
-            <li>Import into Vercel as a Next.js app.</li>
-            <li>Set build command to <code>npm run build</code> and output to <code>.next</code> (defaults).</li>
-          </ol>
+        <div className="mt-auto pt-3">
+          <button
+            type="button"
+            onClick={() =>
+              setFaceMode((prev) =>
+                prev === "environment" ? "user" : "environment",
+              )
+            }
+            className="w-full rounded-lg bg-slate-800/80 py-1.5 text-[0.65rem] font-medium text-slate-300 ring-1 ring-slate-700 transition hover:bg-slate-700/80 md:text-[0.7rem]"
+          >
+            {faceMode === "environment" ? "Traseira" : "Frontal"}
+          </button>
         </div>
-      </section>
+      </aside>
+
+      {status === "error" && error && (
+        <p className="fixed bottom-4 left-4 right-28 max-w-md rounded-lg bg-rose-950/90 px-3 py-2 text-xs text-rose-200 ring-1 ring-rose-800 sm:right-36 md:right-44">
+          {error}. Permita o acesso à câmera e use uma conexão segura (https).
+        </p>
+      )}
     </div>
   );
 }
-

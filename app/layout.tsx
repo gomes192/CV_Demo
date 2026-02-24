@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Room People Counter - Computer Vision Demo",
+  title: "Contador de Pessoas - Demo de Visão Computacional",
   description:
-    "Web-based computer vision demo that counts how many people are in the room using your device camera.",
+    "Demo de visão computacional na web: conte quantas pessoas estão no ambiente usando a câmera do dispositivo.",
 };
 
 export default function RootLayout({
@@ -13,7 +13,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="pt-BR">
       <body className="min-h-screen bg-slate-950 text-slate-50">
         {children}
       </body>
