@@ -22,6 +22,17 @@ export function PeopleCounter() {
   const [faceMode, setFaceMode] = useState<"user" | "environment">(
     "environment",
   );
+  const [viewportKey, setViewportKey] = useState(0);
+
+  useEffect(() => {
+    const handleResize = () => setViewportKey((k) => k + 1);
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
+    };
+  }, []);
 
   useEffect(() => {
     let model: cocoSsd.ObjectDetection | null = null;
@@ -183,7 +194,7 @@ export function PeopleCounter() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-row gap-0">
-      {/* Câmera ocupa a maior parte da tela */}
+      {/* Câmera ocupa a maior parte da tela; resize/orientationchange força re-render */}
       <div className="relative min-w-0 flex-1 overflow-hidden bg-slate-900">
         <video
           ref={videoRef}

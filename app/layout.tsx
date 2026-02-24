@@ -1,10 +1,23 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Contador de Pessoas - Demo de Visão Computacional",
   description:
     "Demo de visão computacional na web: conte quantas pessoas estão no ambiente usando a câmera do dispositivo.",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Contador de Pessoas",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: "#020617",
 };
 
 export default function RootLayout({
