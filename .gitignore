@@ -11,6 +11,9 @@ out/
 # Vercel
 .vercel
 
+# Cursor IDE
+.cursor/
+
 # Environment
 .env
 .env.local
