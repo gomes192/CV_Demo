@@ -9,6 +9,7 @@ type DetectionStatus = "idle" | "loading" | "running" | "error";
 export function PeopleCounter() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const historyRef = useRef<{ count: number; t: number }[]>([]);
   const lastEstimateUpdateRef = useRef<number>(0);
   const maxEstimatedCountRef = useRef<number>(0);
@@ -24,8 +25,24 @@ export function PeopleCounter() {
   );
   const [viewportKey, setViewportKey] = useState(0);
 
+  const resizeCanvasToContainer = useRef(() => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!container || !canvas || !video?.videoWidth) return;
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+  });
+
   useEffect(() => {
-    const handleResize = () => setViewportKey((k) => k + 1);
+    const handleResize = () => {
+      setViewportKey((k) => k + 1);
+      requestAnimationFrame(() => resizeCanvasToContainer.current());
+    };
     window.addEventListener("resize", handleResize);
     window.addEventListener("orientationchange", handleResize);
     return () => {
@@ -59,8 +76,15 @@ export function PeopleCounter() {
         video.srcObject = stream;
         await video.play();
 
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        const sizeCanvas = () => {
+          resizeCanvasToContainer.current();
+          if (canvas.width === 0 || canvas.height === 0) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+          }
+        };
+        requestAnimationFrame(sizeCanvas);
+        setTimeout(sizeCanvas, 150);
 
         model = await cocoSsd.load({ base: "lite_mobilenet_v2" });
 
@@ -81,7 +105,18 @@ export function PeopleCounter() {
           }
 
           try {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const vw = video.videoWidth;
+            const vh = video.videoHeight;
+            const cw = canvas.width;
+            const ch = canvas.height;
+            if (vw > 0 && vh > 0 && cw > 0 && ch > 0) {
+              const scale = Math.max(cw / vw, ch / vh);
+              const sw = vw * scale;
+              const sh = vh * scale;
+              const dx = (cw - sw) / 2;
+              const dy = (ch - sh) / 2;
+              ctx.drawImage(video, 0, 0, vw, vh, dx, dy, sw, sh);
+            }
 
             const predictions = await model.detect(canvas, 40, 0.35);
             const persons = predictions.filter(
@@ -194,8 +229,11 @@ export function PeopleCounter() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-row gap-0">
-      {/* Câmera ocupa a maior parte da tela; resize/orientationchange força re-render */}
-      <div className="relative min-w-0 flex-1 overflow-hidden bg-slate-900">
+      {/* Câmera ocupa a maior parte da tela; canvas redimensiona com o container */}
+      <div
+        ref={containerRef}
+        className="relative min-w-0 flex-1 overflow-hidden bg-slate-900"
+      >
         <video
           ref={videoRef}
           className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-0"
