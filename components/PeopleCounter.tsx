@@ -171,7 +171,8 @@ export function PeopleCounter() {
               ctx.fillRect(x, y, width, height);
               ctx.strokeRect(x, y, width, height);
 
-              const label = `${(person.score ?? 0 * 100).toFixed(0)}% pessoa`;
+              const confidence = ((person.score ?? 0) * 100).toFixed(0);
+              const label = `${confidence}% pessoa`;
               const labelX = x;
               const labelY = y > 20 ? y - 6 : y + 18;
 
